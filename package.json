@@ -1,0 +1,27 @@
+{
+  "name": "request-handle_v1",
+  "version": "1.0.0",
+  "description": "Handles incoming requests by batching them ",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Shreya-277/node-request-handle_v1.git"
+  },
+  "author": "Shreya Sur",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Shreya-277/node-request-handle_v1/issues"
+  },
+  "homepage": "https://github.com/Shreya-277/node-request-handle_v1#readme",
+  "dependencies": {
+    "body-parser": "^1.19.1",
+    "express": "^4.17.2",
+    "mongoose": "^6.1.2",
+    "object-sizeof": "^1.6.1",
+    "path": "^0.12.7"
+  }
+}
