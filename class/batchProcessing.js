@@ -1,18 +1,19 @@
 
-const express = require('express');
-const router = express.Router();
-const Shipment = require('../../models/shipments');
+const mongoose = require('mongoose');
+const sizeof  = require('object-sizeof');
+
+const Shipment = require('../models/shipments');
 
 class BatchProcessing {
 
     constructor(delay, batchSize) {
         this.delay = delay;
         this.batchSize = batchSize;
-        this.activeRequest = [];
-        this.activeResponse = [];
-        this.isScheduled = false;
-        this.schedulerId = 0;
-        this.STATUS = {
+        this._activeRequest = [];
+        this._activeResponse = [];
+        this._isScheduled = false;
+        this._schedulerId = 0;
+        this._STATUS = {
             OK: {
                 code: 200,
                 msg: 'Executed successfully'
@@ -24,43 +25,52 @@ class BatchProcessing {
         }
     }
 
+    /**
+     * Adds incoming requests to a batch for processing
+     * @param {Object} req 
+     * @param {Object} res 
+     */
     addToBatch(req, res) {
         const id = req.params.shipmentId;
-        //if serving the first request
-        if(!this.isScheduled) {
-            //delaying the response till a bacth is processed
+        // If serving the first request of the batch
+        // Start the batch
+        if(!this._isScheduled) {
+            // Delaying the response till the batch is processed
             let that = this;
-            this.schedulerId = setTimeout(() => {
-                if(that.activeRequest.length !== 0) {
-                    that.fetchData();
+            this._schedulerId = setTimeout(() => {
+                if(that._activeRequest.length !== 0) {
+                    that._fetchData();
                 }
             }, this.delay);
     
-            this.isScheduled = true;
-        } else if(this.activeRequest.length >= this.batchSize){
-            this.fetchData();
+            this._isScheduled = true;
+        } else if(this._activeRequest.length >= this.batchSize){
+            //If request size exceeds the btchSize, batch will be processed
+            this._fetchData();
         }
 
-        //push id to array to create a batch
-        //create a batch of incoming request ids and its corrosponding responses
-        this.activeRequest.push(id);
-        this.activeResponse.push(res);
+        // Push incoming request ids and its corrosponding responses to form a batch
+        this._activeRequest.push(id);
+        this._activeResponse.push(res);
     }
 
-    resetScheduler() {
-        this.isScheduled = false;
-        this.activeRequest = [];
-        this.activeResponse = [];
+    /**
+     * Resets scheduler values to start a new batch
+     */
+    _resetScheduler() {
+        this._isScheduled = false;
+        this._activeRequest = [];
+        this._activeResponse = [];
 
-        clearTimeout(this.schedulerId);
+        clearTimeout(this._schedulerId);
     }
+
     /**
      * Stores only unique ids amongst all request ids
      */
-    getUniqueRequest() {
-        let activeRequest = this.activeRequest;
-        let uniqueRequest = activeRequest.filter((req, idx) => {
-            return activeRequest.indexOf(req) == idx
+    _getUniqueRequest(processRequest) {
+        let uniqueRequest = processRequest.filter((req, idx) => {
+            return processRequest.indexOf(req) == idx
         });
 
         return uniqueRequest;
@@ -71,7 +81,7 @@ class BatchProcessing {
      * @param {array} docs 
      * @returns array
      */
-    formatResponse(docs) {
+    _formatResponse(docs) {
         let response = [];
         docs.forEach(doc => {
             response[doc._id] = {
@@ -86,21 +96,29 @@ class BatchProcessing {
     /**
      * Fetches data from the db 
      */
-    fetchData() {
-        let uniqueIds = this.getUniqueRequest();
+    _fetchData() {
         let that = this;
+        // Pools to store the requests and response ids till the time of them being processed
+        let processRequest = that._activeRequest;
+        let processResponse = that._activeResponse;
+        let uniqueIds = that._getUniqueRequest(processRequest);
+       
         // fetching data from db
+        console.log('before processing response', processRequest.length, processResponse.length);
         Shipment.find({
             '_id': { $in: uniqueIds}
         }, function(err, docs){
-            if(err) {
-                that.pushResponse(that.STATUS.ERROR, undefined);
-            } else {
-                let response = that.formatResponse(docs);
-                that.pushResponse(that.STATUS.OK, response);
-            }
-            that.resetScheduler();
+            console.log('Serving ', processRequest.length, ' requests');
+            that._pushResponse(
+                err ? that._STATUS.ERROR : that._STATUS.OK,
+                err ? undefined : that._formatResponse(docs),
+                processRequest,
+                processResponse
+            );
+           
         });
+        // Create a new batch as the previous batch is being processed
+        that._resetScheduler();
     }
 
     /**
@@ -109,11 +127,9 @@ class BatchProcessing {
      * @param {number} status 
      * @param {array} formattedResponse 
      */
-    pushResponse(status, formattedResponse) {
-        let that = this;
-
-        that.activeResponse.forEach((res, idx) => {
-            let id = that.activeRequest[idx];
+    _pushResponse(status, formattedResponse, processRequest, processResponse) {
+        processResponse.forEach((res, idx) => {
+            let id = processRequest[idx];
             let resData = formattedResponse === undefined
                 ? []
                 : formattedResponse[id];
@@ -121,11 +137,9 @@ class BatchProcessing {
             res.status(status.code).json({
                 message: status.msg,
                 response: resData
-            })
+            });
         })
     }
-
-    
 }
 
 module.exports = BatchProcessing;
