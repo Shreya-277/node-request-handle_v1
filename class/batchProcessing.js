@@ -6,13 +6,14 @@ const Shipment = require('../models/shipments');
 
 class BatchProcessing {
 
-    constructor(delay, batchSize) {
+    constructor(delay, maxProcessSize) {
         this.delay = delay;
-        this.batchSize = batchSize;
+        this.maxProcessSize = maxProcessSize;
         this._activeRequest = [];
         this._activeResponse = [];
         this._isScheduled = false;
         this._schedulerId = 0;
+        this._toBeProcessed = 0;
         this._STATUS = {
             OK: {
                 code: 200,
@@ -31,6 +32,13 @@ class BatchProcessing {
      * @param {Object} res 
      */
     addToBatch(req, res) {
+        if(this._toBeProcessed >= this.maxProcessSize) {
+            // console.log('', this._toBeProcessed);
+            return res.status(429).json({
+                msg: 'Too many incoming requests'
+            });
+        }
+
         const id = req.params.shipmentId;
         // If serving the first request of the batch
         // Start the batch
@@ -44,14 +52,15 @@ class BatchProcessing {
             }, this.delay);
     
             this._isScheduled = true;
-        } else if(this._activeRequest.length >= this.batchSize){
+        }/* else if(this._activeRequest.length >= this.batchSize){
             //If request size exceeds the btchSize, batch will be processed
             this._fetchData();
-        }
+        }*/
 
         // Push incoming request ids and its corrosponding responses to form a batch
         this._activeRequest.push(id);
         this._activeResponse.push(res);
+        this._toBeProcessed++;
     }
 
     /**
@@ -138,7 +147,9 @@ class BatchProcessing {
                 message: status.msg,
                 response: resData
             });
-        })
+        });
+
+        this._toBeProcessed -= processRequest.length;
     }
 }
 
